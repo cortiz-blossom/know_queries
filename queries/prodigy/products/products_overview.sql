@@ -8,8 +8,7 @@ member_product_counts AS (
         -- Accounts (Savings, Checking, Certificates, Special) - EXCLUDING LOANS
         SELECT member_number
         FROM account 
-        WHERE member_number > 0 
-          AND discriminator IN ('S', 'D', 'C', 'U')
+        WHERE discriminator IN ('S', 'D', 'C', 'U')
           AND date_closed IS NULL 
           AND (access_control IS NULL OR access_control NOT IN ('B','R'))
 
@@ -19,8 +18,7 @@ member_product_counts AS (
         SELECT a.member_number
         FROM account a 
         JOIN account_loan al ON a.account_id = al.account_id 
-        WHERE a.member_number > 0 
-          AND a.discriminator = 'L' 
+        WHERE a.discriminator = 'L' 
           AND a.account_type NOT IN ('CC', 'PCO', 'PCCO')
           AND a.date_closed IS NULL 
           AND a.charge_off_date IS NULL
@@ -30,8 +28,7 @@ member_product_counts AS (
         -- Physical Cards (Debit, ATM only - excluding physical credit cards to avoid duplication)
         SELECT member_number
         FROM eft_card_file 
-        WHERE member_number > 0 
-          AND card_type IN ('D', 'DI', 'A')
+        WHERE card_type IN ('D', 'DI', 'A')
           AND block_date IS NULL 
           AND expire_date >= CURDATE() 
           AND reject_code NOT IN ('34', '36', '41', '43', '07')
@@ -43,8 +40,7 @@ member_product_counts AS (
         -- Physical Credit Cards
         SELECT member_number
         FROM eft_card_file 
-        WHERE member_number > 0 
-          AND card_type IN ('C', 'PC')
+        WHERE card_type IN ('C', 'PC')
           AND block_date IS NULL 
           AND expire_date >= CURDATE() 
           AND reject_code NOT IN ('34', '36', '41', '43', '07')
@@ -57,8 +53,7 @@ member_product_counts AS (
         SELECT a.member_number
         FROM account a 
         JOIN account_loan al ON a.account_id = al.account_id 
-        WHERE a.member_number > 0 
-          AND a.discriminator = 'L' 
+        WHERE a.discriminator = 'L' 
           AND al.credit_limit > 0
           AND a.date_closed IS NULL 
           AND a.charge_off_date IS NULL
@@ -75,7 +70,9 @@ cu_info AS (
 ),
 
 member_status AS (
-    -- Member active status
+    -- Member active status with filter columns
+    -- NOTE: NULL values in all_accounts_closed are treated as "Has Open Accounts" (149 members)
+    -- This gives a total of 11,929 active members (11,780 with value 0 + 149 with NULL)
     SELECT 
         member_number,
         CASE 
@@ -84,9 +81,17 @@ member_status AS (
              AND all_accounts_closed = 0 
             THEN 'Active'
             ELSE 'Inactive'
-        END AS member_status
+        END AS member_status,
+        -- Filter columns for dashboard
+        CASE WHEN member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
+        CASE WHEN inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
+        -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
+        CASE WHEN all_accounts_closed = 1 THEN 'All Closed' 
+             ELSE 'Has Open Accounts' 
+        END AS member_accounts_status,
+        inactive_flag AS member_inactive_flag_code,
+        all_accounts_closed AS member_all_accounts_closed_flag
     FROM member
-    WHERE member_number > 0
 ),
 
 member_kind AS (
@@ -100,7 +105,6 @@ member_kind AS (
             ELSE 'Unknown'
         END AS member_category
     FROM member m
-    WHERE m.member_number > 0
 ),
 
 recent_account_activity AS (
@@ -139,15 +143,20 @@ SELECT
     END AS recent_activity_status,
     ms.member_status AS member_status,
     'account' AS table_name_origin,
-    mk.member_category
+    mk.member_category,
+    -- New filter columns
+    ms.member_number_is_valid,
+    ms.member_inactive_flag_status,
+    ms.member_accounts_status,
+    ms.member_inactive_flag_code,
+    ms.member_all_accounts_closed_flag
 FROM account a
 CROSS JOIN cu_info ci
 LEFT JOIN member_product_counts mpc ON a.member_number = mpc.member_number
 LEFT JOIN member_status ms         ON a.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = a.member_number
 LEFT JOIN recent_account_activity ra ON ra.account_id = a.account_id
-WHERE a.member_number > 0 
-  AND a.discriminator IN ('S', 'D', 'C', 'U')
+WHERE a.discriminator IN ('S', 'D', 'C', 'U')
 
 UNION ALL
 
@@ -174,7 +183,13 @@ SELECT
     END AS recent_activity_status,
     ms.member_status AS member_status,
     'account_loan' AS table_name_origin,
-    mk.member_category
+    mk.member_category,
+    -- New filter columns
+    ms.member_number_is_valid,
+    ms.member_inactive_flag_status,
+    ms.member_accounts_status,
+    ms.member_inactive_flag_code,
+    ms.member_all_accounts_closed_flag
 FROM account a
 JOIN account_loan al              ON a.account_id = al.account_id
 CROSS JOIN cu_info ci
@@ -182,8 +197,7 @@ LEFT JOIN member_product_counts mpc ON a.member_number = mpc.member_number
 LEFT JOIN member_status ms         ON a.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = a.member_number
 LEFT JOIN recent_account_activity ra ON ra.account_id = a.account_id
-WHERE a.member_number > 0 
-  AND a.discriminator = 'L' 
+WHERE a.discriminator = 'L' 
   AND a.account_type NOT IN ('CC', 'PCO', 'PCCO')
 
 UNION ALL
@@ -225,14 +239,19 @@ SELECT
     END AS recent_activity_status,
     ms.member_status AS member_status,
     'eft_card_file_debit' AS table_name_origin,
-    mk.member_category
+    mk.member_category,
+    -- New filter columns
+    ms.member_number_is_valid,
+    ms.member_inactive_flag_status,
+    ms.member_accounts_status,
+    ms.member_inactive_flag_code,
+    ms.member_all_accounts_closed_flag
 FROM eft_card_file c
 CROSS JOIN cu_info ci
 LEFT JOIN member_product_counts mpc ON c.member_number = mpc.member_number
 LEFT JOIN member_status ms         ON c.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = c.member_number
-WHERE c.member_number > 0 
-  AND c.card_type IN ('D', 'DI', 'A')
+WHERE c.card_type IN ('D', 'DI', 'A')
 
 UNION ALL
 
@@ -272,14 +291,19 @@ SELECT
     END AS recent_activity_status,
     ms.member_status AS member_status,
     'eft_card_file_credit' AS table_name_origin,
-    mk.member_category
+    mk.member_category,
+    -- New filter columns
+    ms.member_number_is_valid,
+    ms.member_inactive_flag_status,
+    ms.member_accounts_status,
+    ms.member_inactive_flag_code,
+    ms.member_all_accounts_closed_flag
 FROM eft_card_file c
 CROSS JOIN cu_info ci
 LEFT JOIN member_product_counts mpc ON c.member_number = mpc.member_number
 LEFT JOIN member_status ms         ON c.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = c.member_number
-WHERE c.member_number > 0 
-  AND c.card_type IN ('C', 'PC')
+WHERE c.card_type IN ('C', 'PC')
 
 UNION ALL
 
@@ -306,7 +330,13 @@ SELECT
     END AS recent_activity_status,
     ms.member_status AS member_status,
     'account_loan_credit' AS table_name_origin,
-    mk.member_category
+    mk.member_category,
+    -- New filter columns
+    ms.member_number_is_valid,
+    ms.member_inactive_flag_status,
+    ms.member_accounts_status,
+    ms.member_inactive_flag_code,
+    ms.member_all_accounts_closed_flag
 FROM account a
 JOIN account_loan al              ON a.account_id = al.account_id
 CROSS JOIN cu_info ci
@@ -314,8 +344,7 @@ LEFT JOIN member_product_counts mpc ON a.member_number = mpc.member_number
 LEFT JOIN member_status ms         ON a.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = a.member_number
 LEFT JOIN recent_account_activity ra ON ra.account_id = a.account_id
-WHERE a.member_number > 0 
-  AND a.discriminator = 'L' 
+WHERE a.discriminator = 'L' 
   AND al.credit_limit > 0
 
 ORDER BY id_member, main_category, category_product, product_is_active DESC

@@ -34,10 +34,23 @@ CASE
     )
 END AS full_name,
     YEAR(CURDATE()) - YEAR(e.dob) AS age,
+    
+    -- Member Status Fields (for dashboard filtering)
     CASE
         WHEN m.inactive_flag = 'I' THEN 'Inactive'
         ELSE 'Active'
     END member_status,
+    
+    -- NEW: Filter columns for dashboard (same as product_overview.sql)
+    CASE WHEN m.member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
+    CASE WHEN m.inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
+    -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
+    CASE WHEN m.all_accounts_closed = 1 THEN 'All Closed' 
+         ELSE 'Has Open Accounts' 
+    END AS member_accounts_status,
+    m.inactive_flag AS member_inactive_flag_code,
+    m.all_accounts_closed AS member_all_accounts_closed_flag,
+    
     CASE 
         WHEN m.member_type = 'P' THEN 'Personal'
         WHEN m.member_type = 'B' THEN 'Business'
@@ -202,7 +215,7 @@ END AS full_name,
     -- Additional useful fields
     m.last_nondiv_activity as last_activity_date,
     m.home_bank_date as last_online_banking_date,
-    CASE WHEN m.all_accounts_closed = 1 THEN 'Yes' ELSE 'No' END as all_accounts_closed,
+    CASE WHEN m.all_accounts_closed = 1 THEN 'Yes' ELSE 'No' END as all_accounts_closed_legacy,
     
     -- Attrition Analysis Fields
     attrition_data.latest_account_closure_date as attrition_date,
@@ -228,7 +241,7 @@ END AS full_name,
     -- Current Date for Refresh Tracking
     CURDATE() as data_extract_date
 
-FROM member m
+FROM   m
 LEFT JOIN entity e ON m.member_entity_id = e.entity_id
 LEFT JOIN eligibility_group eg ON m.eligibility_group_id = eg.eligibility_group_id
 

@@ -88,17 +88,24 @@ cu_info AS (
 
 member_status AS (
     SELECT
-        m.credit_union,
-        m.member_number,
-        CASE
-            WHEN m.member_number IS NOT NULL
-             AND m.member_type IS NOT NULL
-             AND COALESCE(m.all_accounts_closed, 0) = 0
-                THEN 'Active'
+         member_number,
+        CASE 
+            WHEN member_number IS NOT NULL 
+             AND member_type IS NOT NULL 
+             AND all_accounts_closed = 0 
+            THEN 'Active'
             ELSE 'Inactive'
-        END AS member_status
+        END AS member_status,
+        -- Filter columns for dashboard
+        CASE WHEN member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
+        CASE WHEN inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
+        -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
+        CASE WHEN all_accounts_closed = 1 THEN 'All Closed' 
+             ELSE 'Has Open Accounts' 
+        END AS member_accounts_status,
+        inactive_flag AS member_inactive_flag_code,
+        all_accounts_closed AS member_all_accounts_closed_flag
     FROM "AwsDataCatalog"."silver-mvp-know"."member" m
-    WHERE m.member_number > 0
 ),
 
 member_kind AS (

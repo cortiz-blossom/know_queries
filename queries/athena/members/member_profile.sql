@@ -28,6 +28,17 @@ SELECT
     END AS full_name,
     year(current_date) - year(e.dob) AS age,
     CASE WHEN m.inactive_flag = 'I' THEN 'Inactive' ELSE 'Active' END AS member_status,
+
+    -- NEW: Filter columns for dashboard (same as product_overview.sql)
+    CASE WHEN m.member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
+    CASE WHEN m.inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
+    -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
+    CASE WHEN m.all_accounts_closed = 1 THEN 'All Closed' 
+         ELSE 'Has Open Accounts' 
+    END AS member_accounts_status,
+    m.inactive_flag AS member_inactive_flag_code,
+    m.all_accounts_closed AS member_all_accounts_closed_flag,
+
     CASE
         WHEN m.member_type = 'P' THEN 'Personal'
         WHEN m.member_type = 'B' THEN 'Business'

@@ -93,8 +93,8 @@ cu_info AS (
 
 member_status AS (
     SELECT
-        m.credit_union,
-        m.member_number,
+        credit_union,
+         member_number,
         CASE 
             WHEN m.member_number IS NOT NULL 
              AND m.member_type IS NOT NULL 

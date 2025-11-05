@@ -24,6 +24,17 @@ SELECT
     END as product_type,
     m.member_id,
     m.member_number,
+    -- Filter columns for dashboard
+    CASE WHEN member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
+    CASE WHEN inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
+    -- UPDATED: Match user query logic - exclude NULL values
+    CASE 
+        WHEN all_accounts_closed = 1 THEN 'All Closed'
+        WHEN all_accounts_closed = 0 THEN 'Has Open Accounts'
+        ELSE 'Unknown/NULL'
+    END AS member_accounts_status,
+    inactive_flag AS member_inactive_flag_code,
+    all_accounts_closed AS member_all_accounts_closed_flag,
     e.address1,
     YEAR(CURDATE()) - YEAR(e.dob) AS age,
     -- Age group calculation
@@ -78,4 +89,3 @@ SELECT
 FROM Account a
 LEFT JOIN member m ON a.member_number = m.member_number
 LEFT JOIN entity e ON m.member_entity_id = e.entity_id
-WHERE a.account_id IS NOT NULL

@@ -44,9 +44,11 @@ END AS full_name,
     -- NEW: Filter columns for dashboard (same as product_overview.sql)
     CASE WHEN m.member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
     CASE WHEN m.inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
-    -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
-    CASE WHEN m.all_accounts_closed = 1 THEN 'All Closed' 
-         ELSE 'Has Open Accounts' 
+    -- UPDATED: Match user query logic - exclude NULL values
+    CASE 
+        WHEN all_accounts_closed = 1 THEN 'All Closed'
+        WHEN all_accounts_closed = 0 THEN 'Has Open Accounts'
+        ELSE 'Unknown/NULL'
     END AS member_accounts_status,
     m.inactive_flag AS member_inactive_flag_code,
     m.all_accounts_closed AS member_all_accounts_closed_flag,
@@ -270,7 +272,4 @@ LEFT JOIN (
       AND m.all_accounts_closed = 1
     GROUP BY a.member_number
 ) attrition_data ON m.member_number = attrition_data.member_number
-
-WHERE m.member_number IS NOT NULL
-  AND m.member_type IS NOT NULL
 ORDER BY m.member_number

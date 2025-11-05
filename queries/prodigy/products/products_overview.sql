@@ -71,23 +71,26 @@ cu_info AS (
 
 member_status AS (
     -- Member active status with filter columns
-    -- NOTE: NULL values in all_accounts_closed are treated as "Has Open Accounts" (149 members)
-    -- This gives a total of 11,929 active members (11,780 with value 0 + 149 with NULL)
+    -- UPDATED: all_accounts_closed <> 1 excludes NULL (151 members excluded)
+    -- This gives exactly 11,790 active members matching: WHERE all_accounts_closed <> 1 AND inactive_flag <> 'I'
     SELECT 
         member_number,
         CASE 
             WHEN member_number IS NOT NULL 
              AND member_type IS NOT NULL 
-             AND all_accounts_closed = 0 
+             AND all_accounts_closed = 0
+             AND inactive_flag <> 'I' 
             THEN 'Active'
             ELSE 'Inactive'
         END AS member_status,
         -- Filter columns for dashboard
         CASE WHEN member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS member_number_is_valid,
         CASE WHEN inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS member_inactive_flag_status,
-        -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
-        CASE WHEN all_accounts_closed = 1 THEN 'All Closed' 
-             ELSE 'Has Open Accounts' 
+        -- UPDATED: Match user query logic - exclude NULL values
+        CASE 
+            WHEN all_accounts_closed = 1 THEN 'All Closed'
+            WHEN all_accounts_closed = 0 THEN 'Has Open Accounts'
+            ELSE 'Unknown/NULL'
         END AS member_accounts_status,
         inactive_flag AS member_inactive_flag_code,
         all_accounts_closed AS member_all_accounts_closed_flag
@@ -134,7 +137,7 @@ SELECT
     a.date_closed AS date_closed_product,
     mpc.total_products_per_member AS number_of_products_for_member,
     CASE 
-        WHEN a.date_closed IS NULL AND (a.access_control IS NULL OR a.access_control NOT IN ('B','R')) THEN 'Active' 
+        WHEN a.date_closed IS NULL THEN 'Active' 
         ELSE 'Inactive' 
     END AS product_is_active,
     CASE 
@@ -170,6 +173,7 @@ SELECT
     'Loan' AS category_product,
     ci.credit_union_name AS cu_name,
     a.account_number AS product_number,
+    a.account_type AS loan_type,
     a.date_opened AS date_opened_product,
     a.date_closed AS date_closed_product,
     mpc.total_products_per_member AS number_of_products_for_member,
@@ -198,7 +202,6 @@ LEFT JOIN member_status ms         ON a.member_number = ms.member_number
 LEFT JOIN member_kind mk           ON mk.member_number = a.member_number
 LEFT JOIN recent_account_activity ra ON ra.account_id = a.account_id
 WHERE a.discriminator = 'L' 
-  AND a.account_type NOT IN ('CC', 'PCO', 'PCCO')
 
 UNION ALL
 
@@ -227,7 +230,7 @@ SELECT
     CASE 
         WHEN c.block_date IS NULL 
          AND c.expire_date >= CURDATE() 
-         AND c.reject_code NOT IN ('34', '36', '41', '43', '07')
+         AND c.reject_code = '00'
          AND c.lost_or_stolen = ' '
          AND c.last_pin_used_date IS NOT NULL
         THEN 'Active' 
@@ -254,6 +257,8 @@ LEFT JOIN member_kind mk           ON mk.member_number = c.member_number
 WHERE c.card_type IN ('D', 'DI', 'A')
 
 UNION ALL
+--pd_xmaif
+--eft_vendor
 
 -- =========================
 -- PHYSICAL CREDIT CARDS
@@ -279,7 +284,7 @@ SELECT
     CASE 
         WHEN c.block_date IS NULL 
          AND c.expire_date >= CURDATE() 
-         AND c.reject_code NOT IN ('34', '36', '41', '43', '07')
+         AND c.reject_code = '00'
          AND c.lost_or_stolen = ' '
          AND c.last_pin_used_date IS NOT NULL
         THEN 'Active' 

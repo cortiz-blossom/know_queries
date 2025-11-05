@@ -56,7 +56,7 @@ SELECT
     la.approving_loan_officer_userid as approving_officer,
     
     -- Additional Details
-    DATEDIFF(COALESCE(la.action_date, CURRENT_DATE), la.application_date) as days_to_decision,
+    DATEDIFF(COALESCE(la.action_date, CURRENT_DATE), la.application_date) as days_to_decision, --loa_app_steps 
     la.created_timestamp as application_submitted_timestamp,
     la.created_by_userid as submitted_by_user
 

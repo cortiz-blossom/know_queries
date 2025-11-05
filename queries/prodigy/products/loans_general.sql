@@ -72,12 +72,12 @@ SELECT
     al.credit_score as Credit_Score,
     
     -- LOAN STATUS (including delinquency status)
-    CASE 
+    CASE
+        WHEN a.charge_off_date IS NOT NULL THEN 'CHARGED_OFF'
         WHEN a.date_closed IS NULL AND a.current_balance > 0 AND al.next_payment_date IS NOT NULL AND al.next_payment_date < CURDATE() THEN 'DELINQUENT'
-        WHEN a.date_closed IS NULL AND a.current_balance > 0 THEN 'ACTIVE'
+        WHEN a.current_balance = 0 AND a.date_closed IS NOT NULL AND a.charge_off_date IS NULL AND al.credit_limit = 0 AND al.credit_expiration < CURDATE() THEN 'PAID_OFF'
         WHEN a.date_closed IS NOT NULL THEN 'CLOSED'
-        WHEN a.current_balance = 0 AND a.date_closed IS NULL THEN 'PAID_OFF'
-        ELSE 'INACTIVE'
+        ELSE 'ACTIVE'
     END as Status,
     
     -- DAYS PAST DUE (calculated from next_payment_date)

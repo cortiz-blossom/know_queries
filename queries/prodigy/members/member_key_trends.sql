@@ -4,10 +4,12 @@ SELECT
   -- NEW: Filter columns for dashboard (same as product_overview.sql and query_prodigy.sql)
   CASE WHEN m.member_number > 0 THEN 'Valid' ELSE 'Invalid' END AS 'member_number_is_valid',
   CASE WHEN m.inactive_flag = 'I' THEN 'Inactive Flag' ELSE 'Active Flag' END AS 'member_inactive_flag_status',
-  -- Treat NULL as "Has Open Accounts" (ELSE clause includes NULL values)
-  CASE WHEN m.all_accounts_closed = 1 THEN 'All Closed' 
-       ELSE 'Has Open Accounts' 
-  END AS 'member_accounts_status',
+  -- UPDATED: Match user query logic - exclude NULL values
+  CASE 
+      WHEN all_accounts_closed = 1 THEN 'All Closed'
+      WHEN all_accounts_closed = 0 THEN 'Has Open Accounts'
+      ELSE 'Unknown/NULL'
+  END AS member_accounts_status,
   m.inactive_flag AS 'member_inactive_flag_code',
   m.all_accounts_closed AS 'member_all_accounts_closed_flag',
   

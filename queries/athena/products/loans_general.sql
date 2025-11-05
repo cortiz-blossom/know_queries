@@ -66,12 +66,12 @@ SELECT
     a.date_closed AS Closure_Date,
     al.credit_score AS Credit_Score,
     CASE
-        WHEN a.date_closed IS NULL AND a.current_balance > 0 AND al.next_payment_date IS NOT NULL AND al.next_payment_date < CURRENT_DATE THEN 'DELINQUENT'
-        WHEN a.date_closed IS NULL AND a.current_balance > 0 THEN 'ACTIVE'
+        WHEN a.charge_off_date IS NOT NULL THEN 'CHARGED_OFF'
+        WHEN a.date_closed IS NULL AND a.current_balance > 0 AND al.next_payment_date IS NOT NULL AND al.next_payment_date < CURDATE() THEN 'DELINQUENT'
+        WHEN a.current_balance = 0 AND a.date_closed IS NOT NULL AND a.charge_off_date IS NULL AND al.credit_limit = 0 AND al.credit_expiration < CURDATE() THEN 'PAID_OFF'
         WHEN a.date_closed IS NOT NULL THEN 'CLOSED'
-        WHEN a.current_balance = 0 AND a.date_closed IS NULL THEN 'PAID_OFF'
-        ELSE 'INACTIVE'
-    END AS Status,
+        ELSE 'ACTIVE'
+    END as Status,
     CASE
         WHEN al.next_payment_date IS NOT NULL AND al.next_payment_date < CURRENT_DATE
             THEN DATE_DIFF('day', al.next_payment_date, CURRENT_DATE)

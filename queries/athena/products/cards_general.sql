@@ -201,10 +201,57 @@ SELECT
     uc.card_source,
     mct.member_card_portfolio
 FROM (
-    SELECT * FROM all_physical_cards
+    -- Físicas (incluye raw_card_type)
+    SELECT
+        credit_union,
+        member_id,
+        card_id,
+        last_4_digits,
+        card_type,
+        card_brand,
+        creation_date,
+        deleted_date,
+        expiration_date,
+        balance_or_credit_limit,
+        credit_used,
+        CAST(credit_used_percentage AS decimal(15,2)) AS credit_used_percentage,
+        status,
+        delinquency_bracket,
+        activation_date,
+        is_activated,
+        fraud_incident,
+        last_activity_date,
+        card_source,
+        raw_card_type
+    FROM all_physical_cards
+
     UNION ALL
-    SELECT * FROM credit_card_accounts
+
+    -- Cuentas de crédito (agrega NULL como raw_card_type)
+    SELECT
+        credit_union,
+        member_id,
+        card_id,
+        last_4_digits,
+        card_type,
+        card_brand,
+        creation_date,
+        deleted_date,
+        expiration_date,
+        balance_or_credit_limit,
+        credit_used,
+        CAST(credit_used_percentage AS decimal(15,2)) AS credit_used_percentage,
+        status,
+        delinquency_bracket,
+        activation_date,
+        is_activated,
+        fraud_incident,
+        last_activity_date,
+        card_source,
+        CAST(NULL AS varchar) AS raw_card_type
+    FROM credit_card_accounts
 ) uc
+
 LEFT JOIN member_card_types mct
     ON uc.credit_union = mct.credit_union
    AND uc.member_id    = mct.member_id
@@ -216,3 +263,5 @@ ORDER BY
     uc.card_source,
     uc.card_type,
     uc.creation_date DESC;
+
+

@@ -177,6 +177,8 @@ INNER JOIN "AwsDataCatalog"."silver-mvp-know"."account_loan" al
 LEFT JOIN "AwsDataCatalog"."silver-mvp-know"."account_types" at
     ON UPPER(TRIM(a.account_type)) = UPPER(TRIM(at.account_type))
    AND a.credit_union              = at.credit_union
+LEFT JOIN "AwsDataCatalog"."silver-mvp-know"."blossomcompany_olb_map" fi
+  ON lower(trim(fi.prodigy_code)) = lower(trim(a."credit_union"))
 WHERE
     UPPER(TRIM(a.discriminator)) = 'L'
     AND UPPER(TRIM(a.account_type)) NOT IN ('CC','PCO','PCCO')

@@ -1,169 +1,227 @@
-WITH cu_info AS (
-    SELECT credit_union_name
-    FROM credit_union_info
-    WHERE flag_inactive <> 'Y'
-    ORDER BY record_number
-    LIMIT 1
-)
-SELECT 
-    -- Identification
-    a.member_number as Member_ID,
-    ci.credit_union_name as CU_Name,
-    a.account_id as Loan_ID,
-    
-    -- Loan classification - MAIN CATEGORY
-    CASE 
-        WHEN a.account_type IN ('CC', 'PCO', 'PCCO') THEN 'Credit Cards'
-        WHEN a.account_type IN ('DUAU', 'DNAU', 'ICUL', 'DMO', 'DRV') THEN 'Auto Loans'
-        WHEN a.account_type IN ('UNSC', 'IA') THEN 'Unsecured Personal Loans'
-        WHEN a.account_type IN ('SSEC', 'SHL', 'SHL2') THEN 'Secured Loans'
-        WHEN a.account_type IN ('HELO', 'HE6', 'HE24', 'HE26', 'MORT') THEN 'Mortgage/Home Equity Loans'
-        WHEN a.account_type IN ('QREG', 'QSPC', 'FR20') THEN 'Quick/Special Loans'
-        WHEN a.account_type = 'OD' THEN 'Overdraft Protection'
-        ELSE 'Unknown/Unclassified'
-    END as Loan_Main_Category,
-    
-    -- SUB CATEGORY - Specific loan type description
-    CASE 
-        WHEN a.account_type = 'UNSC' THEN 'Unsecured Personal Loan'
-        WHEN a.account_type = 'IA' THEN 'Immediate Access Loan'
-        WHEN a.account_type = 'DUAU' THEN 'Direct Auto Loan'
-        WHEN a.account_type = 'CC' THEN 'Credit Card'
-        WHEN a.account_type = 'SSEC' THEN 'Share Secured Loan'
-        WHEN a.account_type = 'DRV' THEN 'Used Vehicle Loan'
-        WHEN a.account_type = 'DMO' THEN 'Direct Mobile Auto Loan'
-        WHEN a.account_type = 'DNAU' THEN 'Direct New Auto Loan'
-        WHEN a.account_type = 'ICUL' THEN 'Indirect Auto Loan'
-        WHEN a.account_type = 'QREG' THEN 'Quick Regular Loan'
-        WHEN a.account_type = 'SHL2' THEN 'Share Secured Loan Type 2'
-        WHEN a.account_type = 'HELO' THEN 'Home Equity Line of Credit (HELOC)'
-        WHEN a.account_type = 'HE26' THEN 'Home Equity Loan 26'
-        WHEN a.account_type = 'PCCO' THEN 'Prepaid Credit Card'
-        WHEN a.account_type = 'OL' THEN 'Other Loans'
-        WHEN a.account_type = 'SHL' THEN 'Share Secured Loan'
-        WHEN a.account_type = 'FR20' THEN 'Fast Rate 20 Loan'
-        WHEN a.account_type = 'OD' THEN 'Overdraft Protection'
-        WHEN a.account_type = 'MORT' THEN 'Mortgage Loan'
-        WHEN a.account_type = 'QSPC' THEN 'Quick Special Loan'
-        WHEN a.account_type = 'PCO' THEN 'Prepaid Card Loan'
-        WHEN a.account_type = 'HE6' THEN 'Home Equity Loan 6'
-        WHEN a.account_type = 'SPS' THEN 'Special Purpose Loan'
-        WHEN a.account_type = 'HE24' THEN 'Home Equity Loan 24'
-        ELSE a.account_type
-    END as Loan_Sub_Category,
-    
-    -- FINANCIAL INFORMATION AND TERMS
-    ROUND(al.interest_rate, 3) as Interest_Rate,
-    al.number_of_payments as Number_of_Installments,
-    
-    -- PAID INSTALLMENTS (Estimated calculation based on dates and payments per year)
-    CASE 
-        WHEN a.date_closed IS NOT NULL THEN al.number_of_payments  -- If closed, all installments were paid
-        WHEN al.number_of_payments IS NOT NULL AND al.number_of_payments > 0 AND a.date_opened IS NOT NULL THEN
-            GREATEST(0, LEAST(al.number_of_payments, 
-                CASE 
-                    WHEN al.payments_per_year > 0 THEN 
-                        FLOOR(DATEDIFF(COALESCE(a.date_closed, CURDATE()), a.date_opened) * al.payments_per_year / 365.0)
-                    ELSE 
-                        FLOOR(DATEDIFF(COALESCE(a.date_closed, CURDATE()), a.date_opened) / 30.0)
-                END
-            ))
-        ELSE NULL
-    END as Number_of_Paid_Installments,
-    
-    -- IMPORTANT DATES
-    a.date_opened as Creation_Date,
-    al.next_payment_date as Next_Payment_Date,
-    a.date_closed as Closure_Date,
-    
-    -- CREDIT INFORMATION
-    al.credit_score as Credit_Score,
-    
-    -- LOAN STATUS (including delinquency status)
-    CASE 
-        WHEN a.date_closed IS NULL AND a.current_balance > 0 AND al.next_payment_date IS NOT NULL AND al.next_payment_date < CURDATE() THEN 'DELINQUENT'
-        WHEN a.date_closed IS NULL AND a.current_balance > 0 THEN 'ACTIVE'
-        WHEN a.date_closed IS NOT NULL THEN 'CLOSED'
-        WHEN a.current_balance = 0 AND a.date_closed IS NULL THEN 'PAID_OFF'
-        ELSE 'INACTIVE'
-    END as Status,
-    
-    -- DAYS PAST DUE (calculated from next_payment_date)
-    CASE 
-        WHEN al.next_payment_date IS NOT NULL AND al.next_payment_date < CURDATE() 
-        THEN DATEDIFF(CURDATE(), al.next_payment_date)
-        ELSE 0 
-    END as Days_Past_Due,
-    
-    -- DELINQUENCY BRACKET (day ranges)
-    CASE 
-        WHEN al.next_payment_date IS NULL OR al.next_payment_date >= CURDATE() THEN 'CURRENT'
-        WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 1 AND 30 THEN '1-30 days'
-        WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 31 AND 60 THEN '31-60 days'
-        WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 61 AND 90 THEN '61-90 days'
-        WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 91 AND 120 THEN '91-120 days'
-        WHEN DATEDIFF(CURDATE(), al.next_payment_date) > 120 THEN 'Over 120 days'
-        ELSE 'CURRENT'
-    END as Delinquency_Bracket,
-    
-    -- TOTAL DELINQUENCY OCCURRENCES (sum of all counters)
-    COALESCE(al.delq_count_30, 0) + COALESCE(al.delq_count_60, 0) + COALESCE(al.delq_count_90, 0) + 
-    COALESCE(al.delq_count_120, 0) + COALESCE(al.delq_count_150, 0) + COALESCE(al.delq_count_180, 0) as Total_Delinquency_Occurrences,
-    
-    -- FINANCIAL BALANCES
-    ROUND(al.opening_balance, 2) as Initial_Balance,
-    ROUND(a.current_balance, 2) as Current_Balance,
-    
-    -- EARNINGS/PROFITABILITY CALCULATIONS
-    -- Interest Income (total accumulated interest earned)
-    ROUND(COALESCE(al.interest_ytd, 0) + COALESCE(al.interest_lytd, 0), 2) as Total_Interest_Earned,
-    ROUND(al.interest_ytd, 2) as Interest_Earned_YTD,
-    ROUND(al.interest_lytd, 2) as Interest_Earned_LYTD,
-    
-    -- Late Fee Income
-    ROUND(COALESCE(al.late_fees_ytd, 0) + COALESCE(al.late_fees_lytd, 0), 2) as Total_Late_Fees_Earned,
-    ROUND(al.late_fees_ytd, 2) as Late_Fees_YTD,
-    ROUND(al.late_fees_lytd, 2) as Late_Fees_LYTD,
-    
-    -- Total Revenue from Loan
-    ROUND(
-        COALESCE(al.interest_ytd, 0) + COALESCE(al.interest_lytd, 0) + 
-        COALESCE(al.late_fees_ytd, 0) + COALESCE(al.late_fees_lytd, 0), 2
-    ) as Total_Revenue_Earned,
-    
-    -- Profitability Ratios and Metrics
-    CASE 
-        WHEN al.opening_balance > 0 THEN 
-            ROUND((COALESCE(al.interest_ytd, 0) + COALESCE(al.interest_lytd, 0)) / al.opening_balance * 100, 3)
-        ELSE 0 
-    END as Interest_Yield_Percentage,
-    
-    -- Monthly Interest Rate (from annual rate)
-    ROUND(al.interest_rate / 12, 6) as Monthly_Interest_Rate,
-    
-    -- Expected vs Actual Interest (for performance analysis)
-    CASE 
-        WHEN a.date_opened IS NOT NULL AND al.opening_balance > 0 AND al.interest_rate > 0 THEN
-            ROUND(
-                al.opening_balance * (al.interest_rate / 100) * 
-                DATEDIFF(COALESCE(a.date_closed, CURDATE()), a.date_opened) / 365.0, 2
-            )
-        ELSE 0
-    END as Expected_Interest_Simple,
-    
-    -- Interest Performance Ratio (Actual vs Expected)
-    CASE 
-        WHEN a.date_opened IS NOT NULL AND al.opening_balance > 0 AND al.interest_rate > 0 THEN
-            ROUND(
-                (COALESCE(al.interest_ytd, 0) + COALESCE(al.interest_lytd, 0)) / 
-                NULLIF(al.opening_balance * (al.interest_rate / 100) * 
-                       DATEDIFF(COALESCE(a.date_closed, CURDATE()), a.date_opened) / 365.0, 0) * 100, 2
-            )
-        ELSE NULL
-    END as Interest_Performance_Ratio
+WITH 
+-- ALL Physical Cards from eft_card_file using pd_xmaif for accurate classification
+all_physical_cards AS (
+    SELECT 
+        ecf.member_number as member_id,
+        CAST(ecf.record_number AS CHAR) as card_id,
+        CAST(RIGHT(ecf.record_number, 4) AS CHAR) as last_4_digits,
+        
+        -- Card Type Classification using pd_xmaif (accurate source)
+        CAST(CASE 
+            WHEN x.credit_card = 'Y' THEN CONCAT(x.description, ' Credit Card')
+            WHEN x.debit_card = 'Y' THEN x.description
+            WHEN x.atm_card = 'Y' THEN x.description
+            ELSE COALESCE(x.description, 'Unknown Card')
+        END AS CHAR) as card_type,
+        
+        -- Card Brand from pd_xmaif (definitive source)
+        CAST(COALESCE(x.card_issuer, 'Unknown') AS CHAR) as card_brand,
+        
+        ecf.issue_date as creation_date,
+        ecf.block_date as deleted_date,
+        ecf.expire_date as expiration_date,
+        
+        -- Balance (for debit/ATM cards, use linked account balance; for credit cards, set to 0 as limit is in account_loan)
+        CASE 
+            WHEN x.credit_card = 'Y' THEN CAST(0 AS DECIMAL(15,2))
+            ELSE COALESCE(ecf.share_acct_bal, ecf.draft_acct_bal, 0)
+        END as balance_or_credit_limit,
+        
+        -- Credit fields (NULL for debit/ATM cards, 0 for physical credit cards)
+        CAST(CASE WHEN x.credit_card = 'Y' THEN 0 ELSE NULL END AS DECIMAL(15,2)) as credit_used,
+        CAST(CASE WHEN x.credit_card = 'Y' THEN 0 ELSE NULL END AS DECIMAL(15,2)) as credit_used_percentage,
+        
+        -- Status Analysis
+        CAST(CASE 
+            WHEN ecf.block_date IS NOT NULL THEN 'Blocked'
+            WHEN ecf.reject_code IN ('34', '43') THEN 'Fraud Block'
+            WHEN ecf.reject_code IN ('36', '41') THEN 'Lost/Stolen Block'
+            WHEN ecf.reject_code = '07' THEN 'Special Handling'
+            WHEN ecf.expire_date < CURDATE() THEN 'Expired'
+            WHEN ecf.last_pin_used_date IS NOT NULL THEN 'Active'
+            WHEN ecf.issue_date IS NOT NULL THEN 'Issued Not Used'
+            ELSE 'Unknown'
+        END AS CHAR) as status,
+        
+        -- Delinquency (N/A for debit cards)
+        CAST('N/A' AS CHAR) as delinquency_bracket,
+        
+        -- Activation Information
+        ecf.last_pin_used_date as activation_date,
+        CAST(CASE WHEN ecf.last_pin_used_date IS NOT NULL THEN 'True' ELSE 'False' END AS CHAR) as is_activated,
+        
+        -- Fraud Incident Flag
+        CAST(CASE 
+            WHEN ecf.reject_code IN ('34', '43') THEN 'True'
+            WHEN ecf.lost_or_stolen != ' ' AND ecf.lost_or_stolen IS NOT NULL THEN 'True'
+            ELSE 'False'
+        END AS CHAR) as fraud_incident,
+        
+        -- For activity check
+        ecf.last_pin_used_date as last_activity_date,
+        
+        -- Card Source (dynamically determined from pd_xmaif)
+        CAST(CASE 
+            WHEN x.credit_card = 'Y' THEN 'Physical Credit'
+            WHEN x.debit_card = 'Y' THEN 'Physical Debit'
+            WHEN x.atm_card = 'Y' THEN 'Physical ATM'
+            ELSE 'Physical Other'
+        END AS CHAR) as card_source,
+        
+        -- Store raw card_type for reference
+        ecf.card_type as raw_card_type
+        
+    FROM eft_card_file ecf
+    LEFT JOIN pd_xmaif x ON ecf.card_type = x.card_type
+    WHERE x.inactive_flag = 0  -- Only active card types from pd_xmaif (matches product_overview.sql)
+),
 
-FROM account a
-INNER JOIN account_loan al ON a.account_id = al.account_id
-CROSS JOIN cu_info ci
-WHERE a.discriminator = 'L' AND a.account_type NOT IN ('CC', 'PCO', 'PCCO')
-ORDER BY a.member_number, a.account_id
+-- Credit Card Accounts from account_loan joined with account for member info
+credit_card_accounts AS (
+    SELECT 
+        a.member_number as member_id,
+        CAST(al.account_id AS CHAR) as card_id,
+        CAST('****' AS CHAR) as last_4_digits,  -- Card numbers not stored in loan table
+        
+        CAST('Credit Account' AS CHAR) as card_type,
+        CAST('Unknown' AS CHAR) as card_brand,  -- Brand info not available in loan table
+        
+        COALESCE(al.funded_date, a.date_opened) as creation_date,
+        a.date_closed as deleted_date,
+        al.credit_expiration as expiration_date,
+        
+        -- Credit Card Financial Information
+        al.credit_limit as balance_or_credit_limit,
+        a.current_balance as credit_used,
+        CASE 
+            WHEN al.credit_limit > 0 THEN ROUND((a.current_balance * 100.0) / al.credit_limit, 2)
+            ELSE 0 
+        END as credit_used_percentage,
+        
+        -- Status Analysis - CORRECTED to use next_payment_date for delinquency
+        CAST(CASE 
+            WHEN a.date_closed IS NOT NULL THEN 'Closed'
+            WHEN a.charge_off_date IS NOT NULL THEN 'Charged Off'
+            WHEN al.next_payment_date IS NOT NULL AND DATEDIFF(CURDATE(), al.next_payment_date) > 30 THEN 'Delinquent'
+            WHEN a.current_balance > al.credit_limit THEN 'Over Limit'
+            WHEN a.status = 'ACTIVE' THEN 'Active'
+            WHEN a.status = 'CLOSED' THEN 'Closed'
+            WHEN a.status = 'FROZEN' THEN 'Frozen'
+            ELSE 'Active'
+        END AS CHAR) as status,
+        
+        -- Delinquency Bracket in 30-day blocks - CORRECTED to use next_payment_date
+        CAST(CASE 
+            WHEN al.next_payment_date IS NULL THEN 'Unknown'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) <= 0 THEN 'Current'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 1 AND 30 THEN '1-30 Days'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 31 AND 60 THEN '31-60 Days'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 61 AND 90 THEN '61-90 Days'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) BETWEEN 91 AND 120 THEN '91-120 Days'
+            WHEN DATEDIFF(CURDATE(), al.next_payment_date) > 120 THEN '120+ Days'
+            ELSE 'Current'
+        END AS CHAR) as delinquency_bracket,
+        
+        -- Activation (assume funded_date or opened_date as activation for credit cards)
+        COALESCE(al.funded_date, a.date_opened) as activation_date,
+        CAST(CASE WHEN COALESCE(al.funded_date, a.date_opened) IS NOT NULL THEN 'True' ELSE 'False' END AS CHAR) as is_activated,
+        
+        -- Fraud Incident (based on charge-offs or specific indicators)
+        CAST(CASE 
+            WHEN a.charge_off_date IS NOT NULL THEN 'True'
+            WHEN a.status = 'FRAUD' THEN 'True'
+            ELSE 'False'
+        END AS CHAR) as fraud_incident,
+        
+        -- For activity check (use last payment date)
+        al.last_payment_date as last_activity_date,
+        
+        -- Card Source
+        CAST('Credit Account' AS CHAR) as card_source
+        
+    FROM account_loan al
+    INNER JOIN account a ON al.account_id = a.account_id
+    WHERE al.credit_limit > 0  -- Credit Card loans only
+    AND a.discriminator = 'L'  -- Loan accounts
+    AND a.member_number > 0
+),
+
+-- Member card type analysis
+member_card_types AS (
+    SELECT 
+        member_id,
+        CASE 
+            WHEN COUNT(CASE WHEN card_source IN ('Physical Debit', 'Physical ATM') THEN 1 END) > 0 
+                AND COUNT(CASE WHEN card_source IN ('Physical Credit', 'Credit Account') THEN 1 END) > 0 
+            THEN 'Both'
+            WHEN COUNT(CASE WHEN card_source IN ('Physical Debit', 'Physical ATM') THEN 1 END) > 0 
+            THEN 'Debit Only'
+            WHEN COUNT(CASE WHEN card_source IN ('Physical Credit', 'Credit Account') THEN 1 END) > 0 
+            THEN 'Credit Only'
+            ELSE 'Unknown'
+        END as member_card_portfolio
+    FROM (
+        SELECT member_id, card_source FROM all_physical_cards
+        UNION ALL
+        SELECT member_id, card_source FROM credit_card_accounts
+    ) all_cards
+    GROUP BY member_id
+)
+
+-- Final unified result
+SELECT 
+    uc.member_id,
+    uc.card_id,
+    uc.last_4_digits,
+    uc.card_type,
+    uc.card_brand,
+    uc.creation_date,
+    uc.deleted_date,
+    uc.expiration_date,
+    uc.balance_or_credit_limit,
+    uc.credit_used,
+    uc.credit_used_percentage,
+    uc.status,
+    uc.delinquency_bracket,
+    uc.activation_date,
+    uc.is_activated,
+    
+    -- Inactivity flag (no activity in 3 months)
+    CASE 
+        WHEN uc.last_activity_date IS NULL THEN 'True'
+        WHEN DATEDIFF(CURDATE(), uc.last_activity_date) > 90 THEN 'True'
+        ELSE 'False'
+    END as inactivity_flag,
+    
+    uc.fraud_incident,
+    uc.card_source,
+    
+    -- Member card portfolio type
+    mct.member_card_portfolio
+
+FROM (
+    SELECT 
+        member_id, card_id, last_4_digits, card_type, card_brand, 
+        creation_date, deleted_date, expiration_date, 
+        balance_or_credit_limit, credit_used, credit_used_percentage,
+        status, delinquency_bracket, activation_date, is_activated,
+        fraud_incident, last_activity_date, card_source
+    FROM all_physical_cards
+    
+    UNION ALL
+    
+    SELECT 
+        member_id, card_id, last_4_digits, card_type, card_brand,
+        creation_date, deleted_date, expiration_date,
+        balance_or_credit_limit, credit_used, credit_used_percentage,
+        status, delinquency_bracket, activation_date, is_activated,
+        fraud_incident, last_activity_date, card_source
+    FROM credit_card_accounts
+) uc
+LEFT JOIN member_card_types mct ON uc.member_id = mct.member_id
+
+ORDER BY 
+    uc.member_id, 
+    uc.card_source,
+    uc.card_type, 
+    uc.creation_date desc

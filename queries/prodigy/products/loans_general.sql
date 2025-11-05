@@ -1,48 +1,26 @@
 SELECT 
     -- Identification
     a.member_number as Member_ID,
-    'MINNEQUA WORKS CREDIT UNION' as CU_Name,
     a.account_id as Loan_ID,
-    -- Loan classification - MAIN CATEGORY
+    
+    -- CREDIT BUREAU CLASSIFICATION (Definitive source for loan categorization)
+    at.cb_loan_type as Credit_Bureau_Code,
     CASE 
-        WHEN a.account_type IN ('CC', 'PCO', 'PCCO') THEN 'Credit Cards'
-        WHEN a.account_type IN ('DUAU', 'DNAU', 'ICUL', 'DMO', 'DRV') THEN 'Auto Loans'
-        WHEN a.account_type IN ('UNSC', 'IA') THEN 'Unsecured Personal Loans'
-        WHEN a.account_type IN ('SSEC', 'SHL', 'SHL2') THEN 'Secured Loans'
-        WHEN a.account_type IN ('HELO', 'HE6', 'HE24', 'HE26', 'MORT') THEN 'Mortgage/Home Equity Loans'
-        WHEN a.account_type IN ('QREG', 'QSPC', 'FR20') THEN 'Quick/Special Loans'
-        WHEN a.account_type = 'OD' THEN 'Overdraft Protection'
-        ELSE 'Unknown/Unclassified'
+        WHEN at.cb_loan_type = '00' THEN 'Auto Loans'
+        WHEN at.cb_loan_type = '01' THEN 'Unsecured/Personal Loans'
+        WHEN at.cb_loan_type = '02' THEN 'Share/CD Secured Loans'
+        WHEN at.cb_loan_type = '03' THEN 'Signature Secured Loans'
+        WHEN at.cb_loan_type = '11' THEN 'Recreational Vehicle Loans'
+        WHEN at.cb_loan_type = '15' THEN 'Overdraft Protection'
+        WHEN at.cb_loan_type = '18' THEN 'Credit Card'
+        WHEN at.cb_loan_type = '26' THEN 'Real Estate/Mortgage Loans'
+        WHEN at.cb_loan_type = '89' THEN 'Home Equity Loans'
+        ELSE 'Unclassified'
     END as Loan_Main_Category,
     
-    -- SUB CATEGORY - Specific loan type description
-    CASE 
-        WHEN a.account_type = 'UNSC' THEN 'Unsecured Personal Loan'
-        WHEN a.account_type = 'IA' THEN 'Immediate Access Loan'
-        WHEN a.account_type = 'DUAU' THEN 'Direct Auto Loan'
-        WHEN a.account_type = 'CC' THEN 'Credit Card'
-        WHEN a.account_type = 'SSEC' THEN 'Share Secured Loan'
-        WHEN a.account_type = 'DRV' THEN 'Used Vehicle Loan'
-        WHEN a.account_type = 'DMO' THEN 'Direct Mobile Auto Loan'
-        WHEN a.account_type = 'DNAU' THEN 'Direct New Auto Loan'
-        WHEN a.account_type = 'ICUL' THEN 'Indirect Auto Loan'
-        WHEN a.account_type = 'QREG' THEN 'Quick Regular Loan'
-        WHEN a.account_type = 'SHL2' THEN 'Share Secured Loan Type 2'
-        WHEN a.account_type = 'HELO' THEN 'Home Equity Line of Credit (HELOC)'
-        WHEN a.account_type = 'HE26' THEN 'Home Equity Loan 26'
-        WHEN a.account_type = 'PCCO' THEN 'Prepaid Credit Card'
-        WHEN a.account_type = 'OL' THEN 'Other Loans'
-        WHEN a.account_type = 'SHL' THEN 'Share Secured Loan'
-        WHEN a.account_type = 'FR20' THEN 'Fast Rate 20 Loan'
-        WHEN a.account_type = 'OD' THEN 'Overdraft Protection'
-        WHEN a.account_type = 'MORT' THEN 'Mortgage Loan'
-        WHEN a.account_type = 'QSPC' THEN 'Quick Special Loan'
-        WHEN a.account_type = 'PCO' THEN 'Prepaid Card Loan'
-        WHEN a.account_type = 'HE6' THEN 'Home Equity Loan 6'
-        WHEN a.account_type = 'SPS' THEN 'Special Purpose Loan'
-        WHEN a.account_type = 'HE24' THEN 'Home Equity Loan 24'
-        ELSE a.account_type
-    END as Loan_Sub_Category,
+    -- SUB CATEGORY - Specific loan type description from account_types
+    COALESCE(at.description, a.account_type) as Loan_Sub_Category,
+    a.account_type as Account_Type_Code,
     
     -- FINANCIAL INFORMATION AND TERMS
     ROUND(al.interest_rate, 3) as Interest_Rate,
@@ -156,5 +134,7 @@ SELECT
 
 FROM account a
 INNER JOIN account_loan al ON a.account_id = al.account_id
-WHERE a.discriminator = 'L' and a.account_type not IN ('CC', 'PCO', 'PCCO')
+LEFT JOIN account_types at ON a.account_type = at.account_type
+WHERE a.discriminator = 'L' 
+  AND a.account_type NOT IN ('CC', 'PCO', 'PCCO')
 ORDER BY a.member_number, a.account_id
